@@ -87,7 +87,7 @@ Then pass `--storage-state storageState.json` (CLI) or `storage_state="storageSt
 
 ## How it works / limitations
 
-- Launches headless Chromium, blocks image/font/media network requests (saves bandwidth — the `src` attributes are still present in the DOM without downloading the bytes), loads the post page, and:
+- Launches headless Chromium, blocks image/font network requests (saves bandwidth — the `src` attributes are still present in the DOM without downloading the bytes; video is deliberately *not* blocked since capturing its real URL relies on letting the request complete), loads the post page, and:
   - reads image/video URLs straight out of the DOM
   - additionally intercepts network responses for `video/*` content-type or `.mp4`/`.m3u8` URLs, since Threads sometimes lazy-attaches the real video source after initial render
   - walks up from the post's permalink `<a>` to find the container that has like/comment/repost buttons, then extracts author/content/stats from it
@@ -97,7 +97,7 @@ Then pass `--storage-state storageState.json` (CLI) or `storage_state="storageSt
 
 ## Credits
 
-The DOM-walking heuristic (find the post permalink, walk up to the container with ≥2 stat buttons, then read fields off it) and the network-interception trick for video URLs are adapted from [Chuanyin1202/threads-toolkit](https://github.com/Chuanyin1202/threads-toolkit) (Apache-2.0), a Node/Playwright/Apify Threads scraper. This project is an independent Python rewrite scoped specifically to single-post media downloading — it does not include that project's profile/search/hashtag features.
+Part of the DOM-parsing logic is adapted from [Chuanyin1202/threads-toolkit](https://github.com/Chuanyin1202/threads-toolkit) (Apache-2.0) — see [NOTICE](NOTICE) for details. threads-dl itself is scoped specifically to single-post media downloading and doesn't include that project's profile/search/hashtag features.
 
 ## Disclaimer
 
@@ -105,4 +105,4 @@ For educational and personal use. Scrapes Threads' public web interface, which i
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -1,0 +1,20 @@
+threads-dl
+Copyright 2026 Quidyz
+
+This product includes software adapted from threads-toolkit
+(https://github.com/Chuanyin1202/threads-toolkit), licensed under
+the Apache License, Version 2.0.
+
+Specifically, the DOM-parsing heuristic used to locate a post's container
+element (walk up from the post permalink until a container with two or
+more like/comment/repost buttons is found) and the field-extraction logic
+(author, content, stats, images, videos) in threads_dl/extractor.py are
+translated line-for-line from that project's TypeScript source
+(src/utils/parser.ts) into a standalone JavaScript snippet invoked from
+Python via Playwright. The network-response interception technique used
+to capture video URLs is likewise adapted from that project's
+src/actions/post.ts.
+
+Everything else in this repository — the Python package structure, browser
+lifecycle management, error classification, CLI, and download logic — is
+original work independent of threads-toolkit.
