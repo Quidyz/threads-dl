@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threads-dl"
+version = "0.1.0"
+description = "Download text, images and videos from a public Threads (threads.net) post URL — no login required."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Quidyz" }]
+keywords = ["threads", "threads.net", "scraper", "downloader", "playwright", "meta"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+dependencies = [
+    "playwright>=1.40",
+    "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+threads-dl = "threads_dl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Quidyz/threads-dl"
+Issues = "https://github.com/Quidyz/threads-dl/issues"
+
+[tool.setuptools.packages.find]
+include = ["threads_dl*"]
