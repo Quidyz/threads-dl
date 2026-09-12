@@ -274,8 +274,18 @@ async def extract_post(
                     raise PostNotFoundError(f"Post not found: {url}")
                 raise ExtractionError(f"Failed to load post page: {url}")
 
-            # Give in-flight video requests a moment to be captured.
-            await asyncio.sleep(2)
+            # Threads only requests the real video CDN URL once its player
+            # detects the post is in view (IntersectionObserver), which a
+            # headless page that never scrolls may not trigger reliably.
+            # Nudge it with a trivial scroll, then poll for the network
+            # capture instead of guessing a fixed delay from the DOM (a
+            # <video> element checked for presence here is unreliable: it's
+            # often mounted by React after this point anyway).
+            await page.evaluate("() => { window.scrollBy(0, 200); window.scrollBy(0, -200); }")
+            for _ in range(10):  # up to ~3s; observed capture in practice: <1s
+                if video_urls:
+                    break
+                await asyncio.sleep(0.3)
 
             post = await _extract_from_page(page, post_id, normalized, list(video_urls))
             if post is None:
