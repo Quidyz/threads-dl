@@ -72,6 +72,24 @@ _EXTRACT_POST_JS = r"""
     const urlMatch = href.match(/\/@([^/]+)\/post\/([A-Za-z0-9_-]+)/);
     const username = urlMatch ? urlMatch[1] : 'unknown';
 
+    // The "found" container can be wider than just this one post — it may
+    // also wrap the next reply or a quoted post, since Threads doesn't put
+    // a clean per-post boundary in the DOM. The next post-permalink link
+    // that points to a DIFFERENT post ID marks where that other post
+    // starts (the current post itself is often linked more than once —
+    // e.g. the username and the timestamp are separate <a> tags to the
+    // same post — so comparing by ID, not by node identity, matters).
+    const currentPostId = urlMatch ? urlMatch[2] : null;
+    const boundaryLink = Array.from(found.querySelectorAll('a[href*="/post/"]')).find((l) => {
+        const m = (l.getAttribute('href') || '').match(/\/post\/([A-Za-z0-9_-]+)/);
+        return m && m[1] !== currentPostId;
+    });
+    const isBeforeBoundary = (el) => {
+        if (!boundaryLink) return true;
+        // eslint-disable-next-line no-bitwise
+        return !!(el.compareDocumentPosition(boundaryLink) & Node.DOCUMENT_POSITION_FOLLOWING);
+    };
+
     const usernameLink = found.querySelector(`a[href="/@${username}"]`);
     const displayName = (usernameLink && usernameLink.textContent && usernameLink.textContent.trim()) || username;
 
@@ -81,25 +99,22 @@ _EXTRACT_POST_JS = r"""
     const verifiedBadge = found.querySelector('svg[aria-label*="已驗證"], svg[aria-label*="Verified"], img[alt*="已驗證"], img[alt*="Verified"]');
     const isVerified = verifiedBadge !== null;
 
-    // Content text. The "container" found above can be wider than just the
-    // main post (it may wrap adjacent replies) since Threads doesn't put a
-    // clean per-post boundary in the DOM. Stop collecting once we hit a
-    // section that clearly belongs to something else (replies, "Related
-    // threads" module, etc.) rather than trying to over-fit the container
-    // heuristic.
-    const BOUNDARY_MARKERS = [
+    // Content text, scoped to before the boundary (see isBeforeBoundary above).
+    // A few section headings (not post content) can still appear before that
+    // boundary — e.g. "Related threads" introduces the list of other posts
+    // whose links define the boundary in the first place, so it always sits
+    // just inside it.
+    const NON_CONTENT_HEADINGS = new Set([
         'related threads', '相關串文', '相关串文',
-        'log in to see more replies', '登入即可查看更多回覆', '登录以查看更多回复',
         'author', '作者',
-    ];
+    ]);
     const texts = [];
     const textElements = found.querySelectorAll('div[dir="auto"], span[dir="auto"]');
-    let hitBoundary = false;
     for (const el of textElements) {
-        if (hitBoundary) break;
+        if (!isBeforeBoundary(el)) break;
         if (el.closest('[role="button"]') || el.closest('a')) continue;
         const text = (el.textContent || '').trim();
-        if (BOUNDARY_MARKERS.includes(text.toLowerCase())) { hitBoundary = true; break; }
+        if (NON_CONTENT_HEADINGS.has(text.toLowerCase())) continue;
         if (
             text.length > 5 &&
             text !== username &&
@@ -108,6 +123,7 @@ _EXTRACT_POST_JS = r"""
             !text.match(/^\d+[mhd]$/) &&
             !text.match(/^[\d,]+$/) &&
             !text.match(/^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$/) &&
+            !text.match(/^[\d,.]+[KkMm]?\s*(views?|次瀏覽|次浏览)$/i) &&
             !text.match(/^(讚|留言|轉發|分享|翻譯|Like|Comment|Repost|Share|Translate)/i) &&
             !text.toLowerCase().includes('trouble playing this video')
         ) {
@@ -153,9 +169,10 @@ _EXTRACT_POST_JS = r"""
         else if (text.includes('分享') || /share/i.test(text)) shares = num;
     }
 
-    // Images (exclude avatars)
+    // Images (exclude avatars, scoped to before the boundary)
     const images = [];
     for (const img of found.querySelectorAll('img')) {
+        if (!isBeforeBoundary(img)) continue;
         const src = img.getAttribute('src');
         const alt = img.getAttribute('alt') || '';
         if (src && !src.includes('profile') && !alt.includes('大頭貼') && !alt.includes('profile') && !alt.includes('avatar')) {
@@ -163,9 +180,10 @@ _EXTRACT_POST_JS = r"""
         }
     }
 
-    // Videos: DOM <video>/<source> elements, plus network-captured URLs passed in
+    // Videos: DOM <video>/<source> elements (scoped), plus network-captured URLs passed in
     const videos = [];
     for (const v of found.querySelectorAll('video source, video')) {
+        if (!isBeforeBoundary(v)) continue;
         const src = v.getAttribute('src');
         if (src) videos.push(src);
     }
@@ -232,9 +250,11 @@ async def extract_post(
     normalized = normalize_post_url(url)
     if normalized is None:
         raise InvalidUrlError(f"Not a Threads URL: {url}")
+    # A /share/<code>/ link (from the app's Share button) has no post ID of
+    # its own — Threads redirects it to the canonical @user/post/<id> URL
+    # client-side, so we resolve the real ID from page.url after navigating
+    # instead of failing here.
     post_id = extract_post_id(normalized)
-    if post_id is None:
-        raise InvalidUrlError(f"Could not find a post ID in URL: {url}")
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=headless, args=["--disable-gpu", "--no-sandbox"])
@@ -273,6 +293,15 @@ async def extract_post(
                 if await is_not_found_page(page):
                     raise PostNotFoundError(f"Post not found: {url}")
                 raise ExtractionError(f"Failed to load post page: {url}")
+
+            # Now that navigation (and any share-link redirect) has settled,
+            # resolve the real post ID and canonical URL from the address bar.
+            resolved_id = extract_post_id(page.url)
+            if resolved_id:
+                post_id = resolved_id
+                normalized = normalize_post_url(page.url) or normalized
+            if post_id is None:
+                raise InvalidUrlError(f"Could not find a post ID in URL: {url}")
 
             # Threads only requests the real video CDN URL once its player
             # detects the post is in view (IntersectionObserver), which a
