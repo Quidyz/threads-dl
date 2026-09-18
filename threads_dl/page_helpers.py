@@ -46,6 +46,19 @@ _DETECT_PAGE_ERROR_JS = """
         const loginLink = document.querySelector('[role="dialog"] a[href*="login"]');
         isLoginWall = loginLink !== null;
     }
+    // Age/sensitive-content gate on a specific post: "This content isn't
+    // available to everyone. It can't be seen by certain audiences." —
+    // functionally a login wall (needs an authenticated session to bypass),
+    // but the page has no login button/dialog for detect_page_error's other
+    // checks to catch.
+    if (!isLoginWall) {
+        const restrictedPatterns = [
+            "isn't available to everyone", 'not available to everyone',
+            'certain audiences', '無法讓所有人查看', '无法让所有人查看',
+            '特定使用者無法查看', '特定用户无法查看',
+        ];
+        isLoginWall = restrictedPatterns.some((p) => bodyTextLower.includes(p.toLowerCase()));
+    }
 
     const rateLimitPatterns = [
         'rate limit', 'too many requests', 'try again later',
