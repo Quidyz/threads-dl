@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 from pathlib import Path
 
@@ -27,9 +28,7 @@ async def download_media(post: ThreadsPost, dest_dir: str | Path, *, timeout: fl
     saved: list[Path] = []
 
     async with httpx.AsyncClient(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
-        index = 0
-        for url in (*post.videos, *post.images):
-            index += 1
+        for index, url in enumerate((*post.videos, *post.images), start=1):
             path = await _download_one(client, url, dest, post.id, index)
             if path is not None:
                 saved.append(path)
@@ -42,9 +41,12 @@ async def _download_one(client: httpx.AsyncClient, url: str, dest: Path, post_id
             resp.raise_for_status()
             ext = _guess_ext(url, resp.headers.get("content-type"))
             path = dest / f"{post_id}_{index}{ext}"
-            with open(path, "wb") as f:
+            f = await asyncio.to_thread(open, path, "wb")
+            try:
                 async for chunk in resp.aiter_bytes():
-                    f.write(chunk)
+                    await asyncio.to_thread(f.write, chunk)
+            finally:
+                await asyncio.to_thread(f.close)
         return path
     except httpx.HTTPError:
         return None

@@ -16,10 +16,12 @@ classification, the public Python API — is new.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Any
 
-from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
+from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .errors import (
     ExtractionError,
@@ -32,6 +34,8 @@ from .models import Author, PostStats, ThreadsPost
 from .page_helpers import block_heavy_resources, detect_page_error, is_not_found_page
 from .text_utils import parse_relative_time
 from .url_utils import extract_post_id, normalize_post_url
+
+logger = logging.getLogger(__name__)
 
 _VIDEO_URL_RE = re.compile(r"\.(mp4|m3u8)(\?|$)", re.IGNORECASE)
 
@@ -270,7 +274,9 @@ async def extract_post(
                     if ct.startswith("video/") or _VIDEO_URL_RE.search(response.url):
                         video_urls.add(response.url)
                 except Exception:
-                    pass
+                    # Fire-and-forget event handler; a closed connection/page
+                    # mid-response shouldn't crash extraction.
+                    logger.debug("Ignoring error while inspecting response", exc_info=True)
 
             page.on("response", _on_response)
             await block_heavy_resources(page)
